@@ -7,10 +7,10 @@ var path = require('path')
 var DaumUSB = require('./daumUSB')
 var DaumSIM = require('./daumSIM')
 var DaumBLE = require('./BLE/daumBLE')
-var Gpio = require('onoff').Gpio
-var shiftUp = new Gpio(4, 'in', 'rising', { debounceTimeout: 10 }) // hardware switch for shifting up gears
-var shiftDown = new Gpio(17, 'in', 'rising', { debounceTimeout: 10 }) // hardware switch for shifting down gears
-var DEBUG = false // turn this on for debug information in consol
+//var Gpio = require('onoff').Gpio
+//var shiftUp = new Gpio(4, 'in', 'rising', { debounceTimeout: 10 }) // hardware switch for shifting up gears
+//var shiftDown = new Gpio(17, 'in', 'rising', { debounceTimeout: 10 }) // hardware switch for shifting down gears
+var DEBUG = true // turn this on for debug information in consol
 const { version } = require('./package.json') // get version number from package.json
 // ////////////////////////////////////////////////////////////////////////
 // used global variables, because I cannot code ;)
@@ -49,6 +49,9 @@ var daumUSB = new DaumUSB()
 var daumSIM = new DaumSIM()
 var daumBLE = new DaumBLE(serverCallback)
 var daumObs = daumUSB.open()
+
+var myVar
+
 // /////////////////////////////////////////////////////////////////////////
 // Web server callback, listen for actions taken at the server GUI, not from Daum or BLE
 // /////////////////////////////////////////////////////////////////////////
@@ -101,6 +104,9 @@ var geargpio = 1 // initialize to start from first gear
 var ratio = 1 // set ratio, to shift multiple gears with the press of a button.
 var minGear = 1 // lowest gear
 var maxGear = 28 // highest gear
+
+/*
+
 shiftUp.watch((err, value) => {
   if (err) {
     io.emit('error', '[server.js] - gpio shift up: ' + err)
@@ -147,11 +153,48 @@ shiftDown.watch((err, value) => {
 process.on('SIGINT', () => {
   shiftDown.unexport()
 })
+
+*/
+
 // /////////////////////////////////////////////////////////////////////////
 // Bike information transfer to BLE & Webserver
 // /////////////////////////////////////////////////////////////////////////
+
+daumBLE.on('accept', string => {
+  if (DEBUG) console.log('[server.js] - ### accept ###')
+  io.emit('key', '[server.js] - ### accept ###')
+
+  myVar = setInterval(myTimer, 1000);
+
+  function myTimer() {
+    var data={};
+    data.rpm=90;
+    data.power=100;
+    data.hr=123;
+
+    if (DEBUG) console.log('[server.js] - data:' + JSON.stringify(data))
+      
+    if ('speed' in data) io.emit('speed', data.speed)
+    if ('power' in data) io.emit('power', data.power)
+    if ('rpm' in data) io.emit('rpm', data.rpm)
+    if ('gear' in data) io.emit('gear', data.gear)
+    if ('program' in data) io.emit('program', data.program)
+      
+    daumBLE.notifyFTMS(data)
+  }
+
+})
+
+daumBLE.on('disconnect', string => {
+  if (DEBUG) console.log('[server.js] - ### disconnect ###')
+  io.emit('key', '[server.js] - ### disconnect ###')
+
+  clearInterval( myVar )
+})
+
+
 daumBLE.on('key', string => {
-  if (DEBUG) console.log('[server.js] - error: ' + string)
+  if (DEBUG) console.log('[server.js] - key: ' + string)
   io.emit('key', '[server.js] - ' + string)
 })
 daumBLE.on('error', string => {
