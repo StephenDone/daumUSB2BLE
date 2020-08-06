@@ -1,17 +1,20 @@
 const bleno = require('bleno')
 const EventEmitter = require('events')
-const CyclingPowerService = require('./cycling-power-service')
+
+const CyclingPowerService   = require('./cycling-power-service')
 const FitnessMachineService = require('./ftms-service')
+const HeartRateService      = require('./heart-rate-service')
 
 class DaumBLE extends EventEmitter {
   constructor (serverCallback) {
     super()
 
-    this.name = 'DAUM Ergobike 8008 TRS'
+    this.name = 'Computrainer BLE Bridge'
     process.env['BLENO_DEVICE_NAME'] = this.name
 
-    this.csp = new CyclingPowerService()
+    this.csp  = new CyclingPowerService()
     this.ftms = new FitnessMachineService(serverCallback)
+    this.hrs  = new HeartRateService()
 
     let self = this
     console.log(`[daumBLE.js] - ${this.name} - BLE server starting`)
@@ -24,7 +27,7 @@ class DaumBLE extends EventEmitter {
       self.emit('stateChange', state)
 
       if (state === 'poweredOn') {
-        bleno.startAdvertising(self.name, [self.csp.uuid, self.ftms.uuid])
+        bleno.startAdvertising(self.name, [self.csp.uuid, self.ftms.uuid, self.hrs.uuid])
       } else {
         console.log('Stopping...')
         bleno.stopAdvertising()
@@ -37,7 +40,7 @@ class DaumBLE extends EventEmitter {
       // self.emit('error', error)
 
       if (!error) {
-        bleno.setServices([self.csp, self.ftms],
+        bleno.setServices([self.csp, self.ftms, self.hrs],
           (error) => {
             console.log(`[daumBLE.js] - ${this.name} - setServices: ${(error ? 'error ' + error : 'success')}`)
           })
@@ -67,6 +70,13 @@ class DaumBLE extends EventEmitter {
       bleno.updateRssi()
     })
 
+    bleno.on('disconnect', (clientAddress) => {
+      console.log(`[daumBLE.js] - ${this.name} - disconnect - Client: ${clientAddress}`)
+      self.emit('disconnect', clientAddress)
+      self.emit('key', `[daumBLE.js] - ${this.name} - disconnect - Client: ${clientAddress}`)
+      bleno.updateRssi()
+    })
+
     bleno.on('rssiUpdate', (rssi) => {
       console.log(`[daumBLE.js] - ${this.name} - rssiUpdate: ${rssi}`)
       self.emit('key', `[daumBLE.js] - ${this.name} - rssiUpdate: ${rssi}`)
@@ -77,6 +87,7 @@ class DaumBLE extends EventEmitter {
   notifyFTMS (event) {
     this.csp.notify(event)
     this.ftms.notify(event)
+    this.hrs.notify(event)
   }
 }
 
