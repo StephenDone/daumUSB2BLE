@@ -150,40 +150,42 @@ function daumUSB () {
   // open port as specified by daum
   // /////////////////////////////////////////////////////////////////////////
   this.open = function () {
-    com.list(function (err, ports) {
-      if (err) {
-        self.emitter.emit('error', '[daumUSB.js] - open: ' + err)
-        throw err
+    com.list().then( 
+      ports => {
+        ports.forEach(function (p) {
+          if (p.vendorId && p.productId) { // ??? don't know if this is the ID of ergobike, or the serial adapter, this has to be configured for every bike, so I might skip it
+            if (DEBUG) console.log('[daumUSB.js] - open:' + p.vendorId + '  ' + p.productId) // RS232 converter Ids
+            if (DEBUG) console.log('[daumUSB.js] - open - Ergobike found on port ' + p.comName)
+            self.emitter.emit('key', '[daumUSB.js] - Ergobike found on port ' + p.comName)
+            var port = new com.SerialPort(p.comName, {
+              baudrate: config.port.baudrate,
+              dataBits: config.port.dataBits,
+              parity: config.port.parity,
+              stopBits: config.port.stopBits,
+              flowControl: config.port.flowControl,
+              parser: com.parsers.byteLength(config.port.parserLength) // custom parser set to byte length that is more than the actual response message of ergobike, but no other way possible right know
+            }, false) // thats why the index loops in 'readAndDispatch' are used to get the prefix of each command
+            port.open(function () {
+              self.port = port
+              port.on('data', self.readAndDispatch)
+              self.writer = setInterval(self.flushNext, config.intervals.flushNext) // this is writing the data to the port; i've put here the timeout of DAUM interface spec; 50ms
+              if (gotAdressSuccess === false) { // check, otherwise after a restart via webserver, this will run again
+                if (DEBUG) console.log('[daumUSB.js] - looking for cockpit adress')
+                self.emitter.emit('key', '[daumUSB.js] - looking for cockpit adress')
+                self.readeradress = setInterval(self.getAdress, config.intervals.getAdress) // continiously get adress from ergobike, the interval is canceled if gotAdressSuccess is true
+              }
+              if (DEBUG) console.log('[daumUSB.js] - runData')
+              self.emitter.emit('key', '[daumUSB.js] - runData')
+              self.reader = setInterval(self.runData, config.intervals.runData) // continiously get 'run_Data' from ergobike; 500ms means, every 1000ms a buffer
+            })
+          }
+        })
+      },
+      err => {
+          self.emitter.emit('error', '[daumUSB.js] - open: ' + err)
+          throw err
       }
-      ports.forEach(function (p) {
-        if (p.vendorId && p.productId) { // ??? don't know if this is the ID of ergobike, or the serial adapter, this has to be configured for every bike, so I might skip it
-          if (DEBUG) console.log('[daumUSB.js] - open:' + p.vendorId + '  ' + p.productId) // RS232 converter Ids
-          if (DEBUG) console.log('[daumUSB.js] - open - Ergobike found on port ' + p.comName)
-          self.emitter.emit('key', '[daumUSB.js] - Ergobike found on port ' + p.comName)
-          var port = new com.SerialPort(p.comName, {
-            baudrate: config.port.baudrate,
-            dataBits: config.port.dataBits,
-            parity: config.port.parity,
-            stopBits: config.port.stopBits,
-            flowControl: config.port.flowControl,
-            parser: com.parsers.byteLength(config.port.parserLength) // custom parser set to byte length that is more than the actual response message of ergobike, but no other way possible right know
-          }, false) // thats why the index loops in 'readAndDispatch' are used to get the prefix of each command
-          port.open(function () {
-            self.port = port
-            port.on('data', self.readAndDispatch)
-            self.writer = setInterval(self.flushNext, config.intervals.flushNext) // this is writing the data to the port; i've put here the timeout of DAUM interface spec; 50ms
-            if (gotAdressSuccess === false) { // check, otherwise after a restart via webserver, this will run again
-              if (DEBUG) console.log('[daumUSB.js] - looking for cockpit adress')
-              self.emitter.emit('key', '[daumUSB.js] - looking for cockpit adress')
-              self.readeradress = setInterval(self.getAdress, config.intervals.getAdress) // continiously get adress from ergobike, the interval is canceled if gotAdressSuccess is true
-            }
-            if (DEBUG) console.log('[daumUSB.js] - runData')
-            self.emitter.emit('key', '[daumUSB.js] - runData')
-            self.reader = setInterval(self.runData, config.intervals.runData) // continiously get 'run_Data' from ergobike; 500ms means, every 1000ms a buffer
-          })
-        }
-      })
-    })
+    )
     return self.emitter
   }
   // //////////////////////////////////////////////////////////////////////////
